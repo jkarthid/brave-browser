@@ -8,7 +8,7 @@ pipeline {
     parameters {
         choice(name: "CHANNEL", choices: ["nightly", "dev", "beta", "release"], description: "")
         booleanParam(name: "WIPE_WORKSPACE", defaultValue: false, description: "")
-        booleanParam(name: "RUN_INIT", defaultValue: false, description: "")
+        booleanParam(name: "SKIP_INIT", defaultValue: false, description: "")
         booleanParam(name: "DISABLE_SCCACHE", defaultValue: false, description: "")
         // TODO: add SKIP_SIGNING
         booleanParam(name: "DEBUG", defaultValue: false, description: "")
@@ -27,7 +27,7 @@ pipeline {
                     CHANNEL = params.CHANNEL
                     CHANNEL_CAPITALIZED = CHANNEL.capitalize()
                     WIPE_WORKSPACE = params.WIPE_WORKSPACE
-                    RUN_INIT = params.RUN_INIT
+                    SKIP_INIT = params.SKIP_INIT
                     DISABLE_SCCACHE = params.DISABLE_SCCACHE
                     DEBUG = params.DEBUG
                     BUILD_TYPE = "Release"
@@ -85,9 +85,13 @@ pipeline {
                     def bb_package_json = readJSON(text: httpRequest(url: "https://raw.githubusercontent.com/brave/brave-browser/" + BRANCH + "/package.json", quiet: !DEBUG).content)
                     def bb_version = bb_package_json.version
                     def bc_branch = bb_package_json.config.projects["brave-core"].branch
+                    if (BRANCH_EXISTS_IN_BC) {
+                        bc_branch = BRANCH
+                    }
                     def bc_version = readJSON(text: httpRequest(url: "https://raw.githubusercontent.com/brave/brave-core/" + bc_branch + "/package.json", quiet: !DEBUG).content).version
                     if (bb_version != bc_version) {
-                        echo "Version mismatch between brave-browser (" + bb_version + ") and brave-core (" + bc_version + ") in package.json"
+                        echo "Version mismatch between brave-browser (" + BRANCH + "/" + bb_version + ") and brave-core (" + bc_branch + "/" + bc_version + ") in package.json"
+                        SKIP = true
                         SKIP = true
                         stopCurrentBuild()
                     }
@@ -147,15 +151,10 @@ pipeline {
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 sh "npm run init -- --target_os=android"
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                sh "npm run sync -- --all --target_os=android"
                             }
                         }
                         stage("lint") {
@@ -253,15 +252,10 @@ pipeline {
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 sh "npm run init"
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                sh "npm run sync -- --all"
                             }
                         }
                         stage("lint") {
@@ -424,15 +418,10 @@ pipeline {
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 sh "npm run init"
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                sh "npm run sync -- --all"
                             }
                         }
                         stage("lint") {
@@ -614,20 +603,12 @@ pipeline {
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 powershell """
                                     \$ErrorActionPreference = "Stop"
                                     npm run init
-                                """
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                powershell """
-                                    \$ErrorActionPreference = "Stop"
-                                    npm run sync -- --all
                                 """
                             }
                         }
